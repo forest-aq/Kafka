@@ -15,8 +15,52 @@ Kafka 整体干什么事？
 
 消息队列能做什么事呢？ 主要应用于大数据实时处理领域。   Spark 90%数据来源 -- Kafka
 
-2. kafka快速入门
-安装、使用。 命令行操作次要些，命令行主要是做测试用的.
+2. kafka快速入门  >  安装、使用。
+命令行操作次要些，命令行主要是做测试用的.
+
+hadoop连接工具 > secureCRT工具
+
+了解 Sublime Text > File  > SFTP/FTP 功能
+http://kafka.apache.org/    # 下载kafka
+为什么最好配置环境变量？   >   因为后台操作机器不用经常进入到kafka目录中。
+
+常用命令
+tar -zxvf kafka_2.12-2.6.0.tgz    # 解压
+mv kafka_2.12-2.6.0 kafka    # 改文件名
+cd config/
+vim server.properties
+ls -ll
+xsync kafka/   # 分发安装包
+
+注意: 分发后注意2个事
+a. 更改hadoop上的配置文件server.properties > broker.id
+b. 启动zookeeper, kafka依赖于zookeeper
+
+启动zk命令   zk.sh start
+kafka启动命令
+
+cd kafka/bin/
+kafka-server-start.sh
+kafka-server-stop.sh
+
+# 这两个命令，更多的是在测试环境下使用
+kafka-console-consumer.sh --topic first --zookeeper hadoop102:2181 --from-beginnig  # 消费的主题
+kafka-console-producer.sh --topic first --broker-list hadoop102:9092
+
+# topics的增删改查，就需要用到此命令
+kafka-topics.sh    # 主题的增删改查
+
+# 测试整个负载能力的测试
+kafka-producer-perf-test.sh    # 生产测试
+kafka-consumer-perf-test.sh    # 消费测试
+
+bin/kafka-server-start.sh -daemon config/server.properties    # 加-deamon表示，无日志显现
+jps   # 这个命令啥意思？
+xcall.sh jps   # 查看启动
+
+#
+分区数可超，副本数不可超。
+
 
 3. kafka架构深入
 从细节方面深入了解
