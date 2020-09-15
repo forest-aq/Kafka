@@ -1,3 +1,5 @@
+hadoop + zookeeper + slink + source + flume + kafka + Hadoop分布式文件系统(HDFS) seek
+
 1. kafka概述
 
 消息队列
@@ -11,9 +13,38 @@ Kafka 整体干什么事？
 它处在数据传输这一块，本质是MQ(消息队列)，其实就是个消息中间件，
 假如a、b系统通信，a、b 不直接连通，而是通过中间件。
 
-什么是消息队列？
+什么是消息队列？ 消息的传输过程中保存消息的容器。 俗称中间件
 
-消息队列能做什么事呢？ 主要应用于大数据实时处理领域。   Spark 90%数据来源 -- Kafka
+消息队列能做什么事呢？ 解耦，缓冲，削峰。
+主要应用于大数据实时处理领域， Spark 90%数据来源 -- Kafka
+
+消息队列的2种模式：
+1. 点对点   消费者主动拉取数据
+2. 发布订阅模式
+2种情形
+a.消费者主动拉取数据    好处：速度可以自己调控   坏处：一直维护长轮询     Kafka选用的是消费者拉取数据的方式。
+
+b.消息队列推送数据， 消息队列通知订阅者进行拉取数据。
+好处：不用进行长轮询
+坏处：a.消息队列需要维护一个列表，所有订阅人的列表(列表可能很大)。  b.消费者系统没有启动，挂掉的，消息队列就通知不到挂掉的消费者系统
+
+Zookeeper作用
+1.帮助kafka总结集群，也就是kafka很多信息要存在zookeeper中， 也可以称为kafka元数据。 元数据包括：topic信息， 分区信息， 副本信息
+每个分区leader是谁，每个副本在哪个分区上。 isr,无论增删查，都是在zk中。
+2.消费者跟zk的关系，它在zookeeper当中，存的是偏移量。   0.9 存在zk
+kafka-console-consumer.sh --topic first --zookeeper hadoop102:2181 --from-beginnig
+
+
+生产者生产消息  >   broker-list   kafka-console-producer.sh --topic first --broker-list hadoop102:9092
+kafka集群管理消息    >  zk  kafka-console-consumer.sh --topic first --zookeeper hadoop102:2181 --from-beginnig
+消费者消费消息(关注的是消费者组)   >  bootstrap-server / zk
+三者都要topic
+
+zookeeper
+
+分区的作用： 1. 对于每个topic负载均衡   2. 提高读写的并行度      分区就是把数据分开
+副本的作用： 1. 数据冗余，容灾，备份
+
 
 2. kafka快速入门  >  安装、使用。
 命令行操作次要些，命令行主要是做测试用的.
@@ -64,6 +95,66 @@ xcall.sh jps   # 查看启动
 
 3. kafka架构深入
 从细节方面深入了解
+
+cd kafka/config  >  server.properties
+
+replication   副本
+partitions    分区
+
+副本不会在同一个broker, 因为没有任何意义。
+每个分区都有独立的偏移量.
+生产者和消费者 都是 跟 leader打交道， follower需要主动找到对应的leader, 把数据同步过来。 follower是备份的。
+
+Kafka文件存储机制
+topic 1 > partition n   partition 1  >  segment n    segment 1  >  .log   .index
+.index 存储的是索引 + message的大小
+.log  存储的就是数据
+
+分区注意事项: 生产者指明分区，信息就会存储在某个分区。 指明key, 就会去计算相应的hash。 啥都没指定，那就轮询把。
+ProducerRecord(@NotNull String topic, String key, String value)
+kv
+k的哈希值,在模拟主题的分区个数。
+v
+
+数据的可靠性保证 > 指的就是，如何确保生产者 将数据 传递到了kafka中。
+全部完成同步，才发送ack。 kafka选择的方式，原因副本少。并通过Isr进行优化.
+Isr 同步副本队列 > 作用：就是为了完成发送ack的点。 当leader接收完消息之后，需要通知Isr里面的所有follower同步所有数据，当所有同步完成后，给leader发送个消息，然后leader再给生产者发送一个消息。
+加入Isr的条件： 1. 拉取速度  2. 拉取时间
+
+生产者 是批量发送数据的。
+1. 生产者是一批一批发送数据的
+2. Isr队列   内存
+kafka 写入信息到 zk
+
+SYN：同步序列编号（Synchronize Sequence Numbers）。是TCP/IP建立连接时使用的握手信号。
+ACK (Acknowledge character）即是确认字符，在数据通信中，接收站发给发送站的一种传输类控制字符。表示发来的数据已确认接收无误。
+
+
+bin/kafka-topics.sh --describe --topic first --zookeeper hadoop102:2181   # 出现 Isr 参数
+ack = -1 更多的是造成数据重复问题。   极限 ISR中只有一个leader,也可能会丢数据。
+
+
+ACK解决的是数据同步问题。 决定数据丢不丢的问题。  ACK=-1解决的是ISR中的follower同步问题。
+ISR中消费和存储的一致性问题 > 引出 HW + LEO
+HW解决的是数据一致性
+
+
+Exactly Once 精准一致性   生产环境，不丢失也不重复
+At Least Once 至少一次   在这基础上，实现Exactly Once
+At Most Once 最多一次    ack = 0   绝对不会重复   生产者只发一次给leader
+
+At Least Once + 幂等性 = Exactly Once
+
+什么是幂等性？  简单理解就是 不论生产者发送多少次该数据，该数据只保留一次。
+
+只需要将 Producer 的参数中 enable.idompotence 设置为 true。 默认ack=-1,就是完全同步。
+PID  Produce ID
+幂等性：只能解决单次会话，单个分区里面的数据主副问题。
+
+
+
+
+
 
 4. kafka API
 重点 生产环境中，主要就是写api去操作。
